@@ -6,7 +6,7 @@ import streamlit as st
 st.title("🏠 HypoKompass CH")
 st.write("Can I afford this property?")
 
-# Inputs
+# Relevant Inputs for the calculation part
 purchase_price = st.number_input("Purchase price (CHF)", min_value=100_000, value=1_000_000, step=10_000)
 equity = st.number_input("Equity (CHF)", min_value=0, value=250_000, step=10_000)
 income = st.number_input("Gross annual income (CHF)", min_value=10_000, value=180_000, step=5_000)
