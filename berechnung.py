@@ -1,259 +1,129 @@
-# berechnung.py
-# Schritt 2 von 3: Berechnung (Hauptprozess).
-#
-# Bekommt die Eingabedaten aus Schritt 1 (eingabe.py) und gibt alle Resultate
-# als Dictionary an Schritt 3 (Auswertung) weiter. Hier gibt es kein input() und kein print().
-#
-#   Teil A: Tragbarkeit      – kann ich mir das Eigenheim leisten?      (A1 bis A6)
-#   Teil B: Kostenvergleich  – was kostet jede Strategie pro Szenario?  (B1 bis B5)
-#
-# KI-Hinweis: erstellt mit Claude (Anthropic), Oktober 2026. Formeln vom Team geprüft: [ ]
-# Korrekturen nach Prüfung durch Noel (09.10.2026):
-#   1. Kaufnebenkosten gehen von den harten Eigenmitteln ab (A6-Prüfung)
-#   2. SARON-Untergrenze verschiebt den Zinsverlauf nicht mehr (B1)
-#   3. Vergleich über 15 statt 10 Jahre, damit die Festhypothek 15 Jahre fair verglichen wird
+"""Mortgage affordability and interest-cost calculations."""
+from input_data import CURRENT_YEAR
 
-from eingabe import AKTUELLES_JAHR
-
-# --- Annahmen Tragbarkeit (Schweizer Bankpraxis) ---
-KALK_ZINS = 0.05               # kalkulatorischer Zins 5 % (nicht der echte Zins)
-NEBENKOSTEN_SATZ = 0.01        # Unterhalt: 1 % des Kaufpreises pro Jahr
-KAUFNEBENKOSTEN_SATZ = 0.03    # Notar, Grundbuch, Handänderungssteuer: einmalig ca. 3 %
-MAX_TRAGBARKEIT = 1 / 3        # Wohnkosten max. 1/3 des Bruttoeinkommens
-GELB_GRENZE = 0.38             # Teamentscheid: bis 38 % = knapp (gelbe Ampel)
-MAX_BELEHNUNG = 0.80           # Hypothek max. 80 % des Kaufpreises
-MIN_HARTE_EIGENMITTEL = 0.10   # mind. 10 % des Kaufpreises nicht aus der Pensionskasse
-GRENZE_1_HYPO = 2 / 3          # 1. Hypothek bis 2/3 des Kaufpreises
-AMORTISATION_JAHRE = 15        # 2. Hypothek in 15 Jahren abzahlen ...
-PENSIONSALTER = 65             # ... aber spätestens bis zur Pensionierung
-
-# --- Annahmen Kostenvergleich ---
-VERGLEICH_JAHRE = 15           # Zeitraum des Vergleichs in Jahren (= längste Laufzeit, FEST_15)
-
-# Änderung der Zinsen in Prozentpunkten pro Jahr je Szenario
-SZENARIEN = {
-    "sinken": -0.25,
-    "stabil": 0.0,
-    "steigen": 0.25,
-}
-
-# Laufzeit der Festhypotheken in Jahren
-LAUFZEITEN = {
-    "FEST_3": 3,
-    "FEST_10": 10,
-    "FEST_15": 15,
-}
+CALCULATED_INTEREST_RATE = 0.05
+MAINTENANCE_RATE = 0.01
+PURCHASE_COST_RATE = 0.03
+MAX_AFFORDABILITY_RATIO = 1 / 3
+WARNING_AFFORDABILITY_RATIO = 0.38
+MAX_MORTGAGE_RATIO = 0.80
+MIN_HARD_EQUITY_RATIO = 0.10
+FIRST_MORTGAGE_LIMIT = 2 / 3
+REPAYMENT_YEARS = 15
+RETIREMENT_AGE = 65
+COMPARISON_YEARS = 15
+RATE_SCENARIOS = {"falling": -0.25, "stable": 0.0, "rising": 0.25}
+FIXED_TERMS = {"FIXED_3": 3, "FIXED_10": 10, "FIXED_15": 15}
 
 
-# =====================================================================
-# Teil A: Tragbarkeit
-# =====================================================================
-
-def berechne_kaufnebenkosten(kaufpreis):
-    """A1: Einmalige Kaufnebenkosten, sie werden aus den Eigenmitteln bezahlt."""
-    return kaufpreis * KAUFNEBENKOSTEN_SATZ
+def calculate_purchase_costs(purchase_price):
+    return purchase_price * PURCHASE_COST_RATE
 
 
-def berechne_hypothek(kaufpreis, eigenmittel_fuer_kauf):
-    """A2: Hypothek = Kaufpreis minus Eigenmittel, dazu die Belehnung in Prozent des Kaufpreises."""
-    hypothek = kaufpreis - eigenmittel_fuer_kauf
-    if hypothek < 0:
-        hypothek = 0
-    belehnung = hypothek / kaufpreis
-    return hypothek, belehnung
+def calculate_mortgage(purchase_price, equity_for_purchase):
+    mortgage = max(0, purchase_price - equity_for_purchase)
+    return mortgage, mortgage / purchase_price
 
 
-def teile_hypothek_auf(kaufpreis, hypothek):
-    """A3: Bis 2/3 des Kaufpreises ist es die 1. Hypothek, der Rest ist die 2. Hypothek."""
-    grenze = kaufpreis * GRENZE_1_HYPO
-    if hypothek <= grenze:
-        erste = hypothek
-        zweite = 0
-    else:
-        erste = grenze
-        zweite = hypothek - grenze
-    return erste, zweite
+def split_mortgage(purchase_price, mortgage):
+    first_mortgage = min(mortgage, purchase_price * FIRST_MORTGAGE_LIMIT)
+    return first_mortgage, max(0, mortgage - first_mortgage)
 
 
-def berechne_amortisation(zweite_hypothek, alter):
-    """A4: Die 2. Hypothek wird in 15 Jahren abbezahlt, aber höchstens bis Alter 65."""
-    jahre = AMORTISATION_JAHRE
-    if PENSIONSALTER - alter < jahre:
-        jahre = PENSIONSALTER - alter
-    if jahre < 1:
-        jahre = 1   # damit nie durch 0 geteilt wird
-    pro_jahr = zweite_hypothek / jahre
-    return pro_jahr, jahre
+def calculate_amortisation(second_mortgage, age):
+    years = max(1, min(REPAYMENT_YEARS, RETIREMENT_AGE - age))
+    return second_mortgage / years, years
 
 
-def berechne_kalk_kosten(hypothek, amortisation, kaufpreis):
-    """A5: Kalkulatorische Kosten pro Jahr = Zins 5 % + Amortisation + Nebenkosten 1 %."""
-    zinskosten = hypothek * KALK_ZINS
-    nebenkosten = kaufpreis * NEBENKOSTEN_SATZ
-    return zinskosten + amortisation + nebenkosten
+def calculate_imputed_annual_costs(mortgage, amortisation, purchase_price):
+    return mortgage * CALCULATED_INTEREST_RATE + amortisation + purchase_price * MAINTENANCE_RATE
 
 
-def bestimme_ampel(belehnung, harte_eigenmittel, kaufpreis, quote):
-    """A6: Ampel. Zuerst die Eigenmittel prüfen, dann die Tragbarkeit (Reihenfolge ist wichtig)."""
-    if belehnung > MAX_BELEHNUNG:
-        return "rot", "Zu wenig Eigenmittel: nach den Kaufnebenkosten braucht es mind. 20 % des Kaufpreises."
-    elif harte_eigenmittel < kaufpreis * MIN_HARTE_EIGENMITTEL:
-        return "rot", ("Zu wenig harte Eigenmittel: Nach den Kaufnebenkosten müssen mind. 10 % "
-                       "des Kaufpreises aus eigenem Geld stammen, nicht aus der Pensionskasse.")
-    elif quote <= MAX_TRAGBARKEIT:
-        return "grün", "Tragbar."
-    elif quote <= GELB_GRENZE:
-        return "gelb", "Knapp: liegt leicht über 1/3 des Einkommens."
-    else:
-        return "rot", "Nicht tragbar: Wohnkosten über 1/3 des Einkommens."
+def determine_affordability(mortgage_ratio, hard_equity, purchase_price, cost_ratio):
+    if mortgage_ratio > MAX_MORTGAGE_RATIO:
+        return "red", "Insufficient equity: after purchase costs, at least 20% of the purchase price is usually required."
+    if hard_equity < purchase_price * MIN_HARD_EQUITY_RATIO:
+        return "red", "Insufficient non-pension-fund equity: at least 10% of the purchase price is usually required after purchase costs."
+    if cost_ratio <= MAX_AFFORDABILITY_RATIO:
+        return "green", "Affordable under the model assumptions."
+    if cost_ratio <= WARNING_AFFORDABILITY_RATIO:
+        return "yellow", "Borderline: housing costs are slightly above one third of gross income."
+    return "red", "Not affordable under the model assumptions: housing costs exceed one third of gross income."
 
 
-def berechne_tragbarkeit(nutzer, alter):
-    """Teil A komplett: führt A1 bis A6 nacheinander aus und sammelt alles in einem Dictionary."""
-    kaufpreis = nutzer["kaufpreis"]
-
-    kaufnebenkosten = berechne_kaufnebenkosten(kaufpreis)                       # A1
-    eigenmittel_fuer_kauf = nutzer["eigenmittel"] - kaufnebenkosten
-    # Die Kaufnebenkosten gehen von den harten Eigenmitteln ab: Pensionskassengeld wird
-    # direkt an Bank oder Verkäufer überwiesen und darf z. B. nicht für Notariatskosten
-    # verwendet werden (Quelle: Merkblatt WEF-Vorbezug der Bernischen Pensionskasse).
-    harte_eigenmittel = nutzer["eigenmittel"] - nutzer["pk_bezug"] - kaufnebenkosten
-
-    hypothek, belehnung = berechne_hypothek(kaufpreis, eigenmittel_fuer_kauf)  # A2
-    erste, zweite = teile_hypothek_auf(kaufpreis, hypothek)                     # A3
-    amortisation, amort_jahre = berechne_amortisation(zweite, alter)           # A4
-    kosten_jahr = berechne_kalk_kosten(hypothek, amortisation, kaufpreis)      # A5
-    quote = kosten_jahr / nutzer["einkommen"]
-    ampel, meldung = bestimme_ampel(belehnung, harte_eigenmittel, kaufpreis, quote)  # A6
-
-    return {
-        "kaufnebenkosten": kaufnebenkosten,
-        "harte_eigenmittel": harte_eigenmittel,
-        "hypothek": hypothek,
-        "belehnung": belehnung,
-        "erste_hypothek": erste,
-        "zweite_hypothek": zweite,
-        "amortisation": amortisation,
-        "amortisations_jahre": amort_jahre,
-        "kosten_jahr": kosten_jahr,
-        "kosten_monat": kosten_jahr / 12,
-        "quote": quote,
-        "ampel": ampel,
-        "meldung": meldung,
-    }
+def calculate_affordability(user, age):
+    price = user["purchase_price"]
+    purchase_costs = calculate_purchase_costs(price)
+    equity_for_purchase = user["equity"] - purchase_costs
+    hard_equity = user["equity"] - user["pension_fund_withdrawal"] - purchase_costs
+    mortgage, mortgage_ratio = calculate_mortgage(price, equity_for_purchase)
+    first_mortgage, second_mortgage = split_mortgage(price, mortgage)
+    amortisation, amortisation_years = calculate_amortisation(second_mortgage, age)
+    annual_costs = calculate_imputed_annual_costs(mortgage, amortisation, price)
+    cost_ratio = annual_costs / user["gross_annual_income"]
+    traffic_light, message = determine_affordability(mortgage_ratio, hard_equity, price, cost_ratio)
+    return {"purchase_costs": purchase_costs, "hard_equity": hard_equity, "mortgage": mortgage,
+            "mortgage_ratio": mortgage_ratio, "first_mortgage": first_mortgage, "second_mortgage": second_mortgage,
+            "annual_amortisation": amortisation, "amortisation_years": amortisation_years,
+            "imputed_annual_costs": annual_costs, "imputed_monthly_costs": annual_costs / 12,
+            "affordability_ratio": cost_ratio, "traffic_light": traffic_light, "message": message}
 
 
-# =====================================================================
-# Teil B: Kostenvergleich der Strategien
-# =====================================================================
+def saron_rate_path(start_rate, annual_change, years):
+    path, rate = [], start_rate
+    for _ in range(years):
+        path.append(max(0, rate))
+        rate += annual_change
+    return path
 
-def saron_pfad(start_saron, aenderung, jahre):
-    """B1: Liste mit dem SARON (in %) für jedes Jahr. Der SARON wird nie unter 0 % gerechnet.
 
-    Die Untergrenze gilt nur für den eingetragenen Wert, nicht für den Verlauf selbst:
-    Startet der SARON bei -0.04 %, ergibt "steigen" 0, 0.21, 0.46 ... (nicht 0, 0.25, 0.5).
-    """
-    pfad = []
-    saron = start_saron
-    for jahr in range(jahre):
-        if saron < 0:
-            pfad.append(0)
+def fixed_rate_path(start_rate, term, annual_change, years):
+    path, rate = [], start_rate
+    for year in range(years):
+        if year > 0 and year % term == 0:
+            rate = max(0, start_rate + annual_change * year)
+        path.append(rate)
+    return path
+
+
+def mortgage_balance_path(mortgage, amortisation, floor, years):
+    path, balance = [], mortgage
+    for _ in range(years):
+        path.append(balance)
+        balance = max(floor, balance - amortisation)
+    return path
+
+
+def strategy_interest_costs(balances, tranches, rates, saron_margin, annual_change):
+    years = len(balances)
+    costs = [0.0] * years
+    for product, share in tranches.items():
+        if product == "SARON":
+            path = saron_rate_path(rates["SARON"], annual_change, years)
+            margin = saron_margin
         else:
-            pfad.append(saron)
-        saron = saron + aenderung
-    return pfad
+            path = fixed_rate_path(rates[product], FIXED_TERMS[product], annual_change, years)
+            margin = 0
+        for year in range(years):
+            costs[year] += balances[year] * share * (path[year] + margin) / 100
+    return costs
 
 
-def fest_zins_pfad(start_zins, laufzeit, aenderung, jahre):
-    """B2: Liste mit dem Zins einer Festhypothek für jedes Jahr.
-
-    Während der Laufzeit bleibt der Zins gleich. Läuft sie ab (z. B. 3 Jahre),
-    wird sie zum neuen Marktzins verlängert: Startzins + Änderung bis zu diesem Jahr.
-    """
-    pfad = []
-    zins = start_zins
-    for jahr in range(jahre):
-        if jahr > 0 and jahr % laufzeit == 0:
-            zins = start_zins + aenderung * jahr
-            if zins < 0:
-                zins = 0
-        pfad.append(zins)
-    return pfad
+def compare_strategies(strategies, balances, rates, saron_margin):
+    comparison = {}
+    for strategy in strategies:
+        comparison[strategy["name"]] = {
+            scenario: sum(strategy_interest_costs(balances, strategy["tranches"], rates, saron_margin, change))
+            for scenario, change in RATE_SCENARIOS.items()
+        }
+    return comparison
 
 
-def schuld_pfad(hypothek, amortisation, untergrenze, jahre):
-    """B3: Liste mit der Hypothekarschuld für jedes Jahr.
-
-    Die Schuld sinkt jedes Jahr um die Amortisation, aber nie unter die 1. Hypothek.
-    """
-    pfad = []
-    schuld = hypothek
-    for jahr in range(jahre):
-        pfad.append(schuld)
-        schuld = schuld - amortisation
-        if schuld < untergrenze:
-            schuld = untergrenze
-    return pfad
-
-
-def kosten_strategie(schulden, tranchen, zinsen, marge, aenderung):
-    """B4: Zinskosten pro Jahr für eine Strategie, z. B. tranchen = {"FEST_10": 0.5, "SARON": 0.5}."""
-    jahre = len(schulden)
-    kosten = []
-    for jahr in range(jahre):
-        kosten.append(0)
-
-    for produkt in tranchen:
-        # passenden Zinspfad holen: SARON (+ Marge der Bank) oder Festhypothek
-        if produkt == "SARON":
-            pfad = saron_pfad(zinsen["SARON"], aenderung, jahre)
-            zuschlag = marge
-        else:
-            pfad = fest_zins_pfad(zinsen[produkt], LAUFZEITEN[produkt], aenderung, jahre)
-            zuschlag = 0   # bei der Festhypothek ist die Marge schon im Zins enthalten
-
-        for jahr in range(jahre):
-            betrag = schulden[jahr] * tranchen[produkt]
-            kosten[jahr] = kosten[jahr] + betrag * (pfad[jahr] + zuschlag) / 100
-    return kosten
-
-
-def vergleiche_strategien(strategien, schulden, zinsen, marge):
-    """B5: Gesamte Zinskosten jeder Strategie in jedem Szenario.
-
-    Ergebnis z. B. {"Alles SARON": {"sinken": 74965, "stabil": 74965, "steigen": 230395}, ...}
-    """
-    vergleich = {}
-    for strategie in strategien:
-        name = strategie["name"]
-        vergleich[name] = {}
-        for szenario in SZENARIEN:
-            kosten = kosten_strategie(schulden, strategie["tranchen"], zinsen, marge,
-                                      SZENARIEN[szenario])
-            vergleich[name][szenario] = sum(kosten)
-    return vergleich
-
-
-# =====================================================================
-# Schnittstelle: Schritt 1 -> Schritt 2 -> Schritt 3
-# =====================================================================
-
-def berechne(daten):
-    """Hauptfunktion von Schritt 2: rechnet Teil A und Teil B und gibt alle Resultate zurück."""
-    nutzer = daten["nutzer"]
-    zinsen = daten["markt"]["zinsen"]
-    alter = AKTUELLES_JAHR - nutzer["geburtsjahr"]
-
-    # Teil A
-    tragbarkeit = berechne_tragbarkeit(nutzer, alter)
-
-    # Teil B
-    schulden = schuld_pfad(tragbarkeit["hypothek"], tragbarkeit["amortisation"],
-                           tragbarkeit["erste_hypothek"], VERGLEICH_JAHRE)
-    vergleich = vergleiche_strategien(nutzer["strategien"], schulden, zinsen, nutzer["marge"])
-
-    return {
-        "tragbarkeit": tragbarkeit,
-        "vergleich": vergleich,
-        "jahre": VERGLEICH_JAHRE,
-    }
+def calculate(data):
+    user = data["user"]
+    age = CURRENT_YEAR - user["birth_year"]
+    affordability = calculate_affordability(user, age)
+    balances = mortgage_balance_path(affordability["mortgage"], affordability["annual_amortisation"],
+                                     affordability["first_mortgage"], COMPARISON_YEARS)
+    comparison = compare_strategies(user["strategies"], balances, data["market"]["rates"], user["saron_margin"])
+    return {"affordability": affordability, "strategy_comparison": comparison, "years": COMPARISON_YEARS}
