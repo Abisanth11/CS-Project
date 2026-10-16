@@ -1,4 +1,11 @@
-"""Input collection for HypoKompass CH (console version)."""
+"""Input collection for HypoKompass CH (console version), step 1 of 3.
+
+AI notice: created with Claude (Anthropic), October 2026 (German version);
+English version: [team: add whether/which AI tool was used for the translation].
+Age limit 18–60 (suggestion Noel, 09.10.2026): from 65 on, the 2nd mortgage would have to be
+repaid within a single year, so the result would not be meaningful.
+Equity warnings include the purchase costs, like the traffic light in calculation.py (Noel, 16.10.2026).
+"""
 import datetime
 
 try:
@@ -29,6 +36,7 @@ PLACEHOLDER_SARON_MORTGAGE = 1.19
 REAL_ESTATE_YEARS = 10
 MIN_EQUITY_SHARE = 0.20
 MIN_HARD_EQUITY_SHARE = 0.10
+PURCHASE_COST_RATE = 0.03   # same value as in calculation.py (notary, land registry, transfer tax)
 
 
 def format_chf(amount):
@@ -151,10 +159,12 @@ def _collect_financing():
     rent = _ask_integer("Current monthly rent including utilities (CHF; 0 to skip)", 0, minimum=0)
     user = {"purchase_price": purchase_price, "equity": equity, "pension_fund_withdrawal": pension_fund,
             "gross_annual_income": income, "birth_year": birth_year, "monthly_rent": rent}
-    purchase_costs = purchase_price * 0.03
+    # Warnings use the same rules as the traffic light in calculation.py:
+    # the purchase costs are paid first, from own (non-pension-fund) money.
+    purchase_costs = purchase_price * PURCHASE_COST_RATE
     hard_equity = equity - pension_fund - purchase_costs
-    if equity / purchase_price < MIN_EQUITY_SHARE:
-        print("Note: your equity is below 20% of the purchase price.")
+    if (equity - purchase_costs) / purchase_price < MIN_EQUITY_SHARE:
+        print("Note: after purchase costs, your equity is below 20% of the purchase price.")
     if hard_equity / purchase_price < MIN_HARD_EQUITY_SHARE:
         print("Note: after purchase costs, less than 10% of the price comes from non-pension-fund equity.")
     if equity - purchase_costs < 0:
