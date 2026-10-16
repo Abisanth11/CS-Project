@@ -1,19 +1,44 @@
-"""Mortgage affordability and interest-cost calculations."""
+"""Mortgage affordability and interest-cost calculations (step 2 of 3).
+
+Part A: affordability – can I afford the home? (traffic light)
+Part B: cost comparison – what does each strategy cost in each interest-rate scenario?
+No input() and no print() here, so this file works for the console and for Streamlit.
+
+AI notice: created with Claude (Anthropic), October 2026 (German version);
+English version: [team: add whether/which AI tool was used for the translation].
+Formulas checked by the team: [ ]
+
+Corrections after review by Noel:
+  1. Purchase costs are deducted from the hard equity (affordability check)       (09.10.2026)
+  2. The SARON floor of 0 % does not shift the rate path                            (09.10.2026)
+  3. Comparison over 15 instead of 10 years, so the 15-year fixed rate is
+     compared fairly                                                                (09.10.2026)
+  4. A fixed-rate mortgage is never renewed below MIN_FIXED_RATE (1 %) instead
+     of 0 %                                                                         (16.10.2026)
+"""
 from input_data import CURRENT_YEAR
 
-CALCULATED_INTEREST_RATE = 0.05
-MAINTENANCE_RATE = 0.01
-PURCHASE_COST_RATE = 0.03
-MAX_AFFORDABILITY_RATIO = 1 / 3
-WARNING_AFFORDABILITY_RATIO = 0.38
-MAX_MORTGAGE_RATIO = 0.80
-MIN_HARD_EQUITY_RATIO = 0.10
-FIRST_MORTGAGE_LIMIT = 2 / 3
-REPAYMENT_YEARS = 15
-RETIREMENT_AGE = 65
-COMPARISON_YEARS = 15
-RATE_SCENARIOS = {"falling": -0.25, "stable": 0.0, "rising": 0.25}
+# --- Assumptions affordability (Swiss bank practice) ---
+CALCULATED_INTEREST_RATE = 0.05    # imputed interest rate 5 % (not the real rate)
+MAINTENANCE_RATE = 0.01            # maintenance: 1 % of the purchase price per year
+PURCHASE_COST_RATE = 0.03          # notary, land registry, transfer tax: one-off approx. 3 %
+MAX_AFFORDABILITY_RATIO = 1 / 3    # housing costs max. 1/3 of gross income
+WARNING_AFFORDABILITY_RATIO = 0.38 # team decision: up to 38 % = borderline (yellow light)
+MAX_MORTGAGE_RATIO = 0.80          # mortgage max. 80 % of the purchase price
+MIN_HARD_EQUITY_RATIO = 0.10       # at least 10 % of the price not from the pension fund
+FIRST_MORTGAGE_LIMIT = 2 / 3       # 1st mortgage up to 2/3 of the purchase price
+REPAYMENT_YEARS = 15               # 2nd mortgage repaid within 15 years ...
+RETIREMENT_AGE = 65                # ... but at the latest by retirement
+
+# --- Assumptions cost comparison ---
+COMPARISON_YEARS = 15              # = longest fixed term (FIXED_15)
+RATE_SCENARIOS = {"falling": -0.25, "stable": 0.0, "rising": 0.25}   # change in percentage points per year
 FIXED_TERMS = {"FIXED_3": 3, "FIXED_10": 10, "FIXED_15": 15}
+
+# Floor for fixed-rate mortgages at renewal (in %): even if rates fall sharply, the bank always
+# charges its margin. Even in the negative-rate period 2019–2021 the SNB average for new
+# fixed-rate mortgages never fell below about 1.1 % (5 years) / 1.27 % (10 years).
+MIN_FIXED_RATE = 1.0
 
 
 def calculate_purchase_costs(purchase_price):
@@ -55,6 +80,9 @@ def calculate_affordability(user, age):
     price = user["purchase_price"]
     purchase_costs = calculate_purchase_costs(price)
     equity_for_purchase = user["equity"] - purchase_costs
+    # Purchase costs are deducted from the hard equity: pension fund money is paid directly to
+    # the bank or seller and may not be used e.g. for notary fees
+    # (source: fact sheet on WEF advance withdrawal, Bernische Pensionskasse).
     hard_equity = user["equity"] - user["pension_fund_withdrawal"] - purchase_costs
     mortgage, mortgage_ratio = calculate_mortgage(price, equity_for_purchase)
     first_mortgage, second_mortgage = split_mortgage(price, mortgage)
@@ -70,6 +98,8 @@ def calculate_affordability(user, age):
 
 
 def saron_rate_path(start_rate, annual_change, years):
+    # The 0 % floor only applies to the value written into the path, not to the path itself:
+    # starting at -0.04 %, "rising" gives 0, 0.21, 0.46 ... (not 0, 0.25, 0.50).
     path, rate = [], start_rate
     for _ in range(years):
         path.append(max(0, rate))
@@ -81,7 +111,8 @@ def fixed_rate_path(start_rate, term, annual_change, years):
     path, rate = [], start_rate
     for year in range(years):
         if year > 0 and year % term == 0:
-            rate = max(0, start_rate + annual_change * year)
+            # renewal at the new market rate, but never below MIN_FIXED_RATE
+            rate = max(MIN_FIXED_RATE, start_rate + annual_change * year)
         path.append(rate)
     return path
 
