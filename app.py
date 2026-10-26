@@ -3,6 +3,11 @@
 The UI uses the existing calculation.py / evaluation.py mortgage model. It is a
 model calculation for educational comparison, not personalized financial advice.
 Run with: streamlit run app.py
+
+Decision tree (ml_decision_tree.py) added by Denis with Claude (Anthropic), 26.10.2026:
+new inputs "Your plans" (horizon, income change); the recommendation on the results page
+comes from the tree and is explained with its rules. If the ML part fails, the app falls
+back to the old rule of evaluation.py.
 """
 
 from __future__ import annotations
@@ -16,11 +21,18 @@ from calculation import calculate
 from evaluation import evaluate
 from input_data import (
     CURRENT_YEAR,
+    DEFAULT_HORIZON_YEARS,
+    DEFAULT_INCOME_CHANGE,
+    MAX_HORIZON_YEARS,
+    MAX_INCOME_CHANGE,
+    MIN_HORIZON_YEARS,
+    MIN_INCOME_CHANGE,
     STANDARD_STRATEGIES,
     average_saron_margin,
     format_chf,
     load_market_data,
 )
+from ml_decision_tree import profile_from_user, recommend, train_model
 
 
 # -----------------------------------------------------------------------------
@@ -147,6 +159,26 @@ st.markdown(
 def get_market_data() -> dict[str, Any]:
     """Market data from the project's SNB adapter, or its documented fallbacks."""
     return load_market_data()
+
+
+@st.cache_resource(show_spinner="Training the decision tree on 1,000+ interest-rate scenarios ...")
+def get_decision_tree(_market: dict[str, Any], source: str) -> dict[str, Any]:
+    """Train the decision tree once (about 3 seconds) and keep it for all users and clicks.
+
+    The underscore in _market tells Streamlit not to hash the dict; the cache key is the
+    data source string instead, so the tree is retrained when new SNB data is loaded.
+    """
+    return train_model(_market)
+
+
+def ml_recommendation(user: dict[str, Any], market: dict[str, Any]) -> dict[str, Any] | None:
+    """Recommendation + explanation of the decision tree, or None if the ML part fails."""
+    try:
+        bundle = get_decision_tree(market, market["source"])
+        return recommend(bundle, profile_from_user(user))
+    except Exception:
+        # Keep the app usable: without ML the old rule of evaluation.py is shown
+        return None
 
 
 def money(value: float | int) -> str:
@@ -309,6 +341,27 @@ def render_input_page(market: dict[str, Any]) -> None:
         )
         user["risk_tolerance"] = {"Conservative": "low", "Balanced": "medium", "Flexible": "high"}[risk_ui]
 
+        # New section for the decision tree: how long the user keeps the mortgage and how
+        # the income develops. The horizon is the most important feature of the tree.
+        st.markdown('<div class="section-kicker" style="margin-top:1.3rem">03 · Your plans</div>', unsafe_allow_html=True)
+        st.markdown("### How long will you keep this home?")
+        plan_col1, plan_col2 = st.columns(2, gap="medium")
+        with plan_col1:
+            horizon = st.slider(
+                "Planned horizon (years)", min_value=MIN_HORIZON_YEARS, max_value=MAX_HORIZON_YEARS,
+                value=DEFAULT_HORIZON_YEARS, step=1, key="horizon_years",
+                help="Until you expect to sell, move or refinance. Selling before a fixed-rate "
+                     "mortgage ends usually costs an early repayment penalty.",
+            )
+        with plan_col2:
+            income_change = st.slider(
+                "Expected income change in the next 5 years (%)", min_value=MIN_INCOME_CHANGE,
+                max_value=MAX_INCOME_CHANGE, value=DEFAULT_INCOME_CHANGE, step=5, key="income_change",
+                help="E.g. -20% for part-time work because of children, +15% for a promotion.",
+            )
+        user["horizon_years"] = int(horizon)
+        user["income_change"] = income_change / 100    # stored as a share, like all rates in the code
+
         with st.expander("Customize your strategy", expanded=False):
             st.caption("The four standard strategies are always compared. You can optionally add your own allocation.")
             add_custom = st.checkbox("Also compare my custom allocation", key="add_custom")
@@ -355,7 +408,7 @@ def render_input_page(market: dict[str, Any]) -> None:
             st.markdown('<div class="tip">Purchase costs are estimated at a flat 3%. Pension-fund assets cannot be used to cover these costs.</div>', unsafe_allow_html=True)
 
         st.write("")
-        st.markdown('<div class="soft-card"><div class="section-kicker">What we compare</div><h3>4 mortgage strategies</h3><p class="muted">Fixed for 10 years, staggered 3 / 10 / 15, a fixed/SARON mix, and all SARON.</p><div class="tip">Interest costs are compared over 15 years under falling, stable and rising rate scenarios.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="soft-card"><div class="section-kicker">What we compare</div><h3>4 mortgage strategies</h3><p class="muted">Fixed for 10 years, staggered 3 / 10 / 15, a fixed/SARON mix, and all SARON.</p><div class="tip">Interest costs are compared over 15 years under falling, stable and rising rate scenarios. A decision tree trained on 1,000+ historical and simulated rate paths picks the strategy that fits your plans and risk tolerance.</div></div>', unsafe_allow_html=True)
         if market["source"].startswith("Placeholder"):
             st.markdown('<div class="tip">Market data: placeholder values are being used because an SNB database is not currently available.</div>', unsafe_allow_html=True)
         else:
@@ -369,6 +422,8 @@ def render_input_page(market: dict[str, Any]) -> None:
             try:
                 results = calculate(data)
                 assessment = evaluate(data, results)
+                # Decision tree: recommendation for this profile (None if the ML part fails)
+                assessment["ml"] = ml_recommendation(user, market)
             except Exception as exc:  # keep UI usable if the provided project model rejects an edge case
                 st.error(f"The calculation could not be completed with these inputs: {exc}")
             else:
@@ -441,7 +496,9 @@ def render_results_page() -> None:
     user = data["user"]
     affordability = results["affordability"]
     metrics = assessment["metrics"]
-    recommendation = assessment["recommended_strategy"]
+    ml = assessment.get("ml")
+    # The decision tree decides; the old rule of evaluation.py is only the fallback
+    recommendation = ml["strategy"] if ml else assessment["recommended_strategy"]
     rec_metric = metrics[recommendation]
     market = data["market"]
 
@@ -451,11 +508,15 @@ def render_results_page() -> None:
     st.markdown('<div class="intro-copy">Compare estimated interest costs, affordability and the risk of the different mortgage allocations.</div>', unsafe_allow_html=True)
     st.write("")
 
-    rationale = {
-        "low": "You prefer predictable interest costs, so the recommendation prioritizes minimizing fluctuations.",
-        "medium": "You want to balance security and potential savings. The recommendation gives particular weight to the rising-rate scenario.",
-        "high": "You are more comfortable with rate fluctuations if they could lower costs. The recommendation is based on the stable-rate scenario.",
-    }.get(user["risk_tolerance"], "The recommendation is based on your risk tolerance.")
+    if ml:
+        # Explanation from the tree: the rules on the way to this user's leaf
+        rationale = "Because " + " and ".join(ml["rules"]) + "." if ml["rules"] else "This strategy fits all profiles in our model."
+    else:
+        rationale = {
+            "low": "You prefer predictable interest costs, so the recommendation prioritizes minimizing fluctuations.",
+            "medium": "You want to balance security and potential savings. The recommendation gives particular weight to the rising-rate scenario.",
+            "high": "You are more comfortable with rate fluctuations if they could lower costs. The recommendation is based on the stable-rate scenario.",
+        }.get(user["risk_tolerance"], "The recommendation is based on your risk tolerance.")
     st.markdown(
         f'<div class="hero-result"><div><div class="overline">Recommended for your profile · {risk_label(user["risk_tolerance"])}</div>'
         f'<div class="recommendation">{html.escape(strategy_label(recommendation))}</div>'
@@ -495,6 +556,9 @@ def render_results_page() -> None:
     with right:
         render_cost_chart(metrics, recommendation)
         st.write("")
+        if ml:
+            render_ml_card(ml, recommendation, user)
+            st.write("")
         with st.container(border=True):
             st.markdown('<div class="section-kicker">Interest-rate scenarios</div>', unsafe_allow_html=True)
             st.markdown("### What could change?")
@@ -547,6 +611,45 @@ def render_results_page() -> None:
             st.session_state.pop("result_assessment", None)
             st.rerun()
     render_footer(market)
+
+
+def render_ml_card(ml: dict[str, Any], recommendation: str, user: dict[str, Any]) -> None:
+    """Card 'Why this strategy?': rules of the tree and key figures over all scenarios."""
+    with st.container(border=True):
+        st.markdown('<div class="section-kicker">Decision tree · 1,000+ rate scenarios</div>', unsafe_allow_html=True)
+        st.markdown("### Why this strategy?")
+        # 1. The rules of the tree as a list
+        for rule in ml["rules"]:
+            st.markdown(f"- {html.escape(rule[0].upper() + rule[1:])}")
+        # 2. Key figures of every strategy over the user's horizon
+        horizon = user.get("horizon_years", DEFAULT_HORIZON_YEARS)
+        st.markdown(
+            f'<div class="tip">Interest costs over your horizon of {horizon} years across all historical '
+            f'and simulated scenarios (incl. early repayment penalty if you sell before a fixed term ends).</div>',
+            unsafe_allow_html=True,
+        )
+        header = ('<div class="summary-row"><span class="label"><b>Strategy</b></span>'
+                  '<span class="label" style="text-align:right"><b>Average · worst 10% · budget stress</b></span></div>')
+        rows = [header]
+        for item in ml["details"]:
+            name = html.escape(strategy_label(item["name"]))
+            if item["name"] == recommendation:
+                name = f"<b>{name}</b>"            # highlight the recommended strategy
+            rows.append(
+                f'<div class="summary-row"><span class="label">{name}</span><span class="value">'
+                f'{html.escape(money(item["mean"]))} · {html.escape(money(item["cvar"]))} · {item["stress"]:.0%}</span></div>'
+            )
+        st.markdown("".join(rows), unsafe_allow_html=True)
+        st.markdown(
+            '<div class="tip">Budget stress = share of scenarios in which your actual housing costs exceed '
+            'one third of your income in at least one year.</div>',
+            unsafe_allow_html=True,
+        )
+        # 3. Honest note if the small tree and the exact simulation disagree for this user
+        if ml["exact_strategy"] != ml["strategy"]:
+            st.info(f"For your exact profile, the full simulation would slightly prefer "
+                    f"**{strategy_label(ml['exact_strategy'])}**. The tree keeps its rules simple, "
+                    f"so it can differ in borderline cases.")
 
 
 def render_footer(market: dict[str, Any]) -> None:
