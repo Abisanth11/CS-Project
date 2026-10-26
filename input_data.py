@@ -1,10 +1,10 @@
 """Input collection for HypoKompass CH (console version), step 1 of 3.
 
-AI notice: created with Claude (Anthropic), October 2026 (German version);
-English version: [team: add whether/which AI tool was used for the translation].
 Age limit 18–60 (suggestion Noel, 09.10.2026): from 65 on, the 2nd mortgage would have to be
 repaid within a single year, so the result would not be meaningful.
 Equity warnings include the purchase costs, like the traffic light in calculation.py (Noel, 16.10.2026).
+New questions horizon and income change for the decision tree in ml_decision_tree.py
+(Denis with Claude (Anthropic), 26.10.2026).
 """
 import datetime
 
@@ -37,6 +37,16 @@ REAL_ESTATE_YEARS = 10
 MIN_EQUITY_SHARE = 0.20
 MIN_HARD_EQUITY_SHARE = 0.10
 PURCHASE_COST_RATE = 0.03   # same value as in calculation.py (notary, land registry, transfer tax)
+
+# Plans of the user (used by the decision tree in ml_decision_tree.py).
+# The ranges are the same as for the synthetic training users, so the tree never has to
+# guess outside of what it has learned.
+MIN_HORIZON_YEARS = 3       # shortest horizon in the training data
+MAX_HORIZON_YEARS = 15      # = COMPARISON_YEARS in calculation.py
+DEFAULT_HORIZON_YEARS = 15  # default: the user keeps the home for the whole comparison
+MIN_INCOME_CHANGE = -30     # in %: e.g. part-time work because of children
+MAX_INCOME_CHANGE = 30      # in %: e.g. career step
+DEFAULT_INCOME_CHANGE = 0   # default: income stays the same
 
 
 def format_chf(amount):
@@ -188,6 +198,21 @@ def _collect_custom_strategy():
     return {"name": "Custom allocation", "tranches": tranches}
 
 
+def _collect_plans():
+    print("\n=== C) Your plans ===")
+    # Horizon: how long until the user expects to sell or move. Selling before a fixed-rate
+    # mortgage ends costs an early repayment penalty, so this changes the best strategy.
+    horizon = _ask_integer("For how many years do you plan to keep this home / mortgage?",
+                           DEFAULT_HORIZON_YEARS, minimum=MIN_HORIZON_YEARS, maximum=MAX_HORIZON_YEARS)
+    # Income change: a lower future income makes rising interest rates more dangerous
+    print("Do you expect your income to change over the next 5 years?")
+    print("Examples: -20 for part-time work because of children, +15 for a promotion, 0 for no change.")
+    income_change = _ask_integer("Expected change in income (%)", DEFAULT_INCOME_CHANGE,
+                                 minimum=MIN_INCOME_CHANGE, maximum=MAX_INCOME_CHANGE)
+    # Stored as a share (e.g. -0.2), like all other rates in the code
+    return {"horizon_years": horizon, "income_change": income_change / 100}
+
+
 def _collect_strategies_and_risk(market):
     print("\n=== B) How to split your mortgage ===")
     strategies = _copy_strategies()
@@ -223,6 +248,10 @@ def show_summary(user):
         print("SARON bank margin:        ", f"{user['saron_margin']:.2f}%")
     if "risk_tolerance" in user:
         print("Risk tolerance:           ", user["risk_tolerance"])
+    if "horizon_years" in user:
+        print("Planned horizon:          ", user["horizon_years"], "years")
+    if "income_change" in user:
+        print("Expected income change:   ", f"{user['income_change']:+.0%}")
     if "strategies" in user:
         print("Strategies:")
         for strategy in user["strategies"]:
@@ -241,6 +270,7 @@ def collect_inputs():
         print("Note: placeholder rates are being used because the SNB database is unavailable.")
     user = _collect_financing()
     user.update(_collect_strategies_and_risk(market))
+    user.update(_collect_plans())          # horizon and income change (for the decision tree)
     show_summary(user)
     return {"user": user, "market": market}
 
@@ -248,7 +278,8 @@ def collect_inputs():
 def sample_data():
     user = {"purchase_price": 850_000, "equity": 200_000, "pension_fund_withdrawal": 0,
             "gross_annual_income": 150_000, "birth_year": CURRENT_YEAR - 28, "monthly_rent": 2_200,
-            "strategies": _copy_strategies(), "saron_margin": 0.8, "risk_tolerance": "medium"}
+            "strategies": _copy_strategies(), "saron_margin": 0.8, "risk_tolerance": "medium",
+            "horizon_years": DEFAULT_HORIZON_YEARS, "income_change": DEFAULT_INCOME_CHANGE / 100}
     return {"user": user, "market": load_market_data()}
 
 
