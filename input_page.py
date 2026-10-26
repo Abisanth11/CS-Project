@@ -20,7 +20,9 @@
 # AI notice: console version scaffolded with Claude (Anthropic), 09.10.2026;
 #            converted to Streamlit and translated to English by Denis with Claude (Anthropic), 15.10.2026;
 #            adapted to the names of input_data.py / calculation.py by Noel with Claude (Anthropic), 16.10.2026
-#            (file renamed from eingabe.py; equity warnings now include the purchase costs).
+#            (file renamed from eingabe.py; equity warnings now include the purchase costs);
+#            block C "Your plans" (horizon, income change) for the decision tree
+#            added by Denis with Claude (Anthropic), 26.10.2026.
 #
 # Run with:  streamlit run input_page.py
 
@@ -33,6 +35,12 @@ from input_data import (
     MIN_EQUITY_SHARE,
     MIN_HARD_EQUITY_SHARE,
     PURCHASE_COST_RATE,
+    MIN_HORIZON_YEARS,
+    MAX_HORIZON_YEARS,
+    DEFAULT_HORIZON_YEARS,
+    MIN_INCOME_CHANGE,
+    MAX_INCOME_CHANGE,
+    DEFAULT_INCOME_CHANGE,
     load_market_data,
     average_saron_margin,
     format_chf,
@@ -202,6 +210,37 @@ def capture_strategies_and_risk(market):
     }
 
 
+# --- Block C: Your plans ---
+
+def capture_plans():
+    """Asks how long the user keeps the home and how their income will change.
+
+    Both answers go into the decision tree (ml_decision_tree.py): the horizon is the most
+    important feature of the tree, the income change decides about budget stress.
+    """
+    st.header("C) Your plans")
+
+    # Horizon: selling before a fixed-rate mortgage ends costs an early repayment penalty,
+    # so short horizons favour SARON, long horizons favour fixed or staggered mortgages
+    horizon = st.slider(
+        "For how many years do you plan to keep this home and mortgage?",
+        min_value=MIN_HORIZON_YEARS, max_value=MAX_HORIZON_YEARS, value=DEFAULT_HORIZON_YEARS, step=1,
+        help="Until you expect to sell, move or refinance. If you sell before a fixed-rate "
+             "mortgage ends, the bank usually charges an early repayment penalty.")
+
+    # Income change: a lower income makes rising interest rates more dangerous for the budget
+    income_change = st.slider(
+        "How do you expect your income to change over the next 5 years? (%)",
+        min_value=MIN_INCOME_CHANGE, max_value=MAX_INCOME_CHANGE, value=DEFAULT_INCOME_CHANGE, step=5,
+        help="Examples: -20 % for part-time work because of children, +15 % for a promotion, "
+             "0 % if you expect no change.")
+
+    return {
+        "horizon_years": horizon,
+        "income_change": income_change / 100,   # stored as a share (e.g. -0.2), like all rates in the code
+    }
+
+
 # --- Summary ---
 
 def show_summary(user):
@@ -218,6 +257,8 @@ def show_summary(user):
         st.write("**Current rent:**", format_chf(user["monthly_rent"]), "per month")
     st.write("**SARON margin:**", user["saron_margin"], "%")
     st.write("**Risk tolerance:**", user["risk_tolerance"])
+    st.write("**Planned horizon:**", user["horizon_years"], "years")
+    st.write("**Expected income change:**", f"{user['income_change']:+.0%}")
     st.write("**Strategies:**")
     for strategy in user["strategies"]:
         st.write("- **" + strategy["name"] + "**: " + describe_tranches(strategy["tranches"]))
@@ -242,6 +283,7 @@ def capture_inputs():
     user = capture_financing()
     valid = check_financing(user)
     user.update(capture_strategies_and_risk(market))   # merge both blocks
+    user.update(capture_plans())                       # horizon and income change (decision tree)
     show_summary(user)
 
     data = {"user": user, "market": market}
