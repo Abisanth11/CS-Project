@@ -17,7 +17,7 @@ from typing import Any
 
 import streamlit as st
 import streamlit.components.v1 as components
-
+from pathlib import Path
 from calculation import calculate
 from evaluation import evaluate
 from input_data import (
@@ -39,9 +39,15 @@ from ml_decision_tree import profile_from_user, recommend, train_model
 # -----------------------------------------------------------------------------
 # Page setup and theme
 # -----------------------------------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent
+LOGO_PATH = BASE_DIR / "assets" / "hypokompass_logo.png"
+
+with open(LOGO_PATH, "rb") as f:
+    LOGO_BASE64 = base64.b64encode(f.read()).decode("utf-8")
+
 st.set_page_config(
     page_title="HypoKompass CH | Your first home",
-    page_icon="🏠",
+    page_icon=str(LOGO_PATH),
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -269,12 +275,26 @@ def status_info(traffic_light: str) -> tuple[str, str]:
     return labels.get(traffic_light, ("yellow", "Please review"))
 
 
+
 def render_header(active_step: int) -> None:
     """Compact responsive header with an icon-only theme toggle."""
-    brand_col, theme_col = st.columns([8, 1], vertical_alignment="center")
+    brand_col, theme_col = st.columns(
+        [8, 1],
+        vertical_alignment="center",
+    )
+
     with brand_col:
         st.markdown(
-            '<div class="brand"><span class="brand-mark">◈</span>HypoKompass CH</div>',
+            f"""
+            <div class="brand">
+                <img
+                    src="data:image/png;base64,{LOGO_BASE64}"
+                    class="brand-logo"
+                    alt="HypoKompass logo"
+                />
+                <span>HypoKompass CH</span>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
     with theme_col:
