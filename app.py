@@ -54,39 +54,55 @@ ORANGE = "#e28b43"
 TEAL = "#75a79a"
 BLUE = "#347b96"
 
+if "dark_mode" not in st.session_state:
+    st.session_state["dark_mode"] = False
+DARK = st.session_state["dark_mode"]
+BG = "#111a1e" if DARK else PAPER
+SURFACE = "#1b292f" if DARK else "#fffdf9"
+CARD = "#202f35" if DARK else "#ffffff"
+TEXT = "#edf3f4" if DARK else INK
+SUBTEXT = "#b4c2c6" if DARK else MUTED
+BORDER = "#35464d" if DARK else LINE
+
 st.markdown(
     f"""
     <style>
       @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
       :root {{
         --hypo-navy: {NAVY}; --hypo-ink: {INK}; --hypo-muted: {MUTED};
-        --hypo-paper: {PAPER}; --hypo-line: {LINE}; --hypo-orange: {ORANGE};
+        --hypo-paper: {BG}; --hypo-line: {BORDER}; --hypo-orange: {ORANGE};
+        --hypo-surface: {SURFACE}; --hypo-card: {CARD}; --hypo-text: {TEXT}; --hypo-subtext: {SUBTEXT};
       }}
-      html, body, [class*="css"] {{ font-family: 'DM Sans', sans-serif; color: var(--hypo-ink); }}
-      .stApp {{ background: var(--hypo-paper); }}
-      [data-testid="stHeader"] {{ background: rgba(245,243,238,0.94); }}
+      html, body, [class*="css"], [data-testid="stAppViewContainer"] {{ font-family: 'DM Sans', sans-serif; color: var(--hypo-text); }}
+      .stApp, [data-testid="stAppViewContainer"] {{ background: var(--hypo-paper); color:var(--hypo-text); }}
+      [data-testid="stHeader"] {{ background: var(--hypo-paper); }}
       [data-testid="stToolbar"] {{ right: 1rem; }}
       .block-container {{ max-width: 1420px; padding-top: 1.2rem; padding-bottom: 3rem; }}
-      h1, h2, h3, h4 {{ font-family: 'Manrope', sans-serif !important; color: var(--hypo-ink); letter-spacing: -0.025em; }}
+      h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{ font-family: 'Manrope', sans-serif !important; color: var(--hypo-text) !important; letter-spacing: -0.025em; }}
       h1 {{ font-size: clamp(2rem, 3.6vw, 3.15rem) !important; line-height: 1.08 !important; font-weight: 800 !important; }}
       h2 {{ font-size: 1.45rem !important; font-weight: 800 !important; }}
       h3 {{ font-size: 1.08rem !important; font-weight: 800 !important; }}
-      p, label, [data-testid="stWidgetLabel"] {{ color: var(--hypo-ink); }}
+      p, label, [data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p, [data-testid="stCaptionContainer"] {{ color: var(--hypo-text); }}
+      [data-testid="stCaptionContainer"], .muted, .tip, .intro-copy, .section-kicker, .eyebrow, .metric-label, .metric-small, .chart-note {{ color: var(--hypo-subtext) !important; }}
+      [data-testid="stRadio"] label, [data-testid="stCheckbox"] label, [data-testid="stSelectbox"] label {{ color:var(--hypo-text) !important; }}
+      [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background:var(--hypo-card); color:var(--hypo-text); border-color:var(--hypo-line); }}
+      [data-testid="stNumberInput"] button {{ color:var(--hypo-text); background:var(--hypo-card); }}
+
       [data-testid="stMarkdownContainer"] p {{ line-height: 1.55; }}
       [data-testid="stNumberInput"] input, [data-testid="stTextInput"] input {{
-        background: #fff; border: 1px solid #d7d2c7; border-radius: 12px;
-        min-height: 3.15rem; font-size: 1.05rem; color: var(--hypo-ink);
+        background: var(--hypo-card); border: 1px solid var(--hypo-line); border-radius: 12px;
+        min-height: 3.15rem; font-size: 1.05rem; color: var(--hypo-text);
       }}
       [data-testid="stNumberInput"] input:focus {{ border-color: var(--hypo-navy); box-shadow: 0 0 0 1px var(--hypo-navy); }}
       [data-testid="stRadio"] > div {{ gap: .6rem; }}
       [data-testid="stRadio"] label {{
-        border: 1px solid #d8d3c8; border-radius: 13px; background: #fff;
+        border: 1px solid var(--hypo-line); border-radius: 13px; background: var(--hypo-card); color:var(--hypo-text);
         padding: .85rem 1rem; min-height: 3.45rem; align-items: center;
       }}
-      [data-testid="stRadio"] label:has(input:checked) {{ border: 2px solid var(--hypo-navy); background: #fff; }}
+      [data-testid="stRadio"] label:has(input:checked) {{ border: 2px solid var(--hypo-navy); background: var(--hypo-card); }}
       [data-testid="stRadio"] label p {{ font-weight: 600; margin: 0; }}
       [data-testid="stCheckbox"] label p {{ font-weight: 600; }}
-      [data-testid="stExpander"] {{ border: 1px solid var(--hypo-line); border-radius: 12px; background: rgba(255,255,255,.55); }}
+      [data-testid="stExpander"] {{ border: 1px solid var(--hypo-line); border-radius: 12px; background: var(--hypo-card); }}
       .stButton > button {{
         border-radius: 12px; min-height: 3.1rem; font-weight: 800; letter-spacing: .01em;
         border: 1px solid var(--hypo-navy); transition: transform .12s ease, box-shadow .12s ease;
@@ -96,58 +112,72 @@ st.markdown(
       .stButton > button[kind="secondary"] {{ background: rgba(255,255,255,.72); color: var(--hypo-navy); }}
       [data-testid="stAlert"] {{ border-radius: 12px; }}
       hr {{ border-color: var(--hypo-line); }}
-      .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:1.2rem; padding:.25rem 0 1.15rem; margin-bottom:1.5rem; border-bottom:1px solid #ddd8ce; }}
-      .brand {{ display:flex; align-items:center; gap:.7rem; font-family:'Manrope',sans-serif; font-size:1.28rem; font-weight:800; letter-spacing:-.035em; color:var(--hypo-ink); white-space:nowrap; }}
-      .brand-mark {{ height:2.25rem; width:2.25rem; display:inline-flex; align-items:center; justify-content:center; border:2px solid var(--hypo-navy); border-radius:50%; color:var(--hypo-orange); font-size:1.15rem; background:#fffdf9; }}
-      .stepnav {{ display:flex; align-items:center; gap:1.55rem; color:#77858a; font-weight:600; font-size:.95rem; }}
-      .stepnav span {{ padding:.55rem .05rem; white-space:nowrap; }}
-      .stepnav .active {{ color:var(--hypo-navy); border-bottom:3px solid var(--hypo-orange); font-weight:800; }}
+      .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:1.2rem; padding:.25rem 0 1.15rem; margin-bottom:1.5rem; border-bottom:1px solid var(--hypo-line); }}
+      .brand {{ display:flex; align-items:center; gap:.7rem; font-family:'Manrope',sans-serif; font-size:1.28rem; font-weight:800; letter-spacing:-.035em; color:var(--hypo-text); white-space:nowrap; }}
+      .brand-mark {{ height:2.25rem; width:2.25rem; display:inline-flex; align-items:center; justify-content:center; border:2px solid var(--hypo-navy); border-radius:50%; color:var(--hypo-orange); font-size:1.15rem; background:var(--hypo-card); }}
       .eyebrow {{ font-size:.76rem; letter-spacing:.13em; text-transform:uppercase; font-weight:800; color:#738187; margin:0 0 .45rem; }}
-      .intro-copy {{ color:var(--hypo-muted); font-size:1.08rem; max-width:42rem; margin-top:.6rem; }}
-      .section-kicker {{ color:var(--hypo-muted); font-size:.83rem; text-transform:uppercase; letter-spacing:.1em; font-weight:800; margin-bottom:.35rem; }}
-      .soft-card {{ background:rgba(255,255,255,.82); border:1px solid var(--hypo-line); border-radius:17px; padding:1.25rem 1.35rem; }}
-      [data-testid="stVerticalBlockBorderWrapper"] {{ background:rgba(255,255,255,.82); border:1px solid var(--hypo-line) !important; border-radius:17px !important; padding:1.15rem 1.25rem !important; }}
+      .intro-copy {{ color:var(--hypo-subtext); font-size:1.08rem; max-width:42rem; margin-top:.6rem; }}
+      .section-kicker {{ color:var(--hypo-subtext); font-size:.83rem; text-transform:uppercase; letter-spacing:.1em; font-weight:800; margin-bottom:.35rem; }}
+      .soft-card {{ background:var(--hypo-card); border:1px solid var(--hypo-line); border-radius:17px; padding:1.25rem 1.35rem; }}
+      [data-testid="stVerticalBlockBorderWrapper"] {{ background:var(--hypo-card); border:1px solid var(--hypo-line) !important; border-radius:17px !important; padding:1.15rem 1.25rem !important; }}
       .soft-card h3 {{ margin:.15rem 0 .55rem; }}
-      .summary-card {{ background:#fff; border:1px solid var(--hypo-line); border-radius:17px; padding:1.3rem 1.4rem; }}
-      .muted {{ color:var(--hypo-muted); }}
-      .metric-label {{ color:var(--hypo-muted); font-size:.87rem; margin-bottom:.2rem; }}
+      .summary-card {{ background:var(--hypo-card); border:1px solid var(--hypo-line); border-radius:17px; padding:1.3rem 1.4rem; }}
+      .muted {{ color:var(--hypo-subtext); }}
+      .metric-label {{ color:var(--hypo-subtext); font-size:.87rem; margin-bottom:.2rem; }}
       .metric-value {{ color:var(--hypo-ink); font-family:'Manrope',sans-serif; font-size:1.38rem; font-weight:800; letter-spacing:-.025em; }}
-      .metric-small {{ color:var(--hypo-muted); font-size:.82rem; margin-top:.2rem; }}
+      .metric-small {{ color:var(--hypo-subtext); font-size:.82rem; margin-top:.2rem; }}
       .summary-row {{ display:flex; justify-content:space-between; align-items:baseline; gap:1rem; padding:.68rem 0; border-bottom:1px solid #eeeae2; }}
       .summary-row:last-child {{ border-bottom:0; }}
-      .summary-row .label {{ color:var(--hypo-muted); }}
-      .summary-row .value {{ color:var(--hypo-ink); font-weight:800; text-align:right; }}
+      .summary-row .label {{ color:var(--hypo-subtext); }}
+      .summary-row .value {{ color:var(--hypo-text); font-weight:800; text-align:right; }}
       .status-strip {{ display:flex; align-items:center; gap:.7rem; border-radius:12px; padding:.85rem 1rem; font-weight:800; margin:.8rem 0; }}
       .status-dot {{ width:.65rem; height:.65rem; border-radius:50%; flex-shrink:0; }}
       .status-green {{ background:#e5f1e9; color:#214b37; }} .status-green .status-dot {{ background:#328558; }}
       .status-yellow {{ background:#fff2d8; color:#714a11; }} .status-yellow .status-dot {{ background:#d99a35; }}
       .status-red {{ background:#fbe7e3; color:#842f25; }} .status-red .status-dot {{ background:#bc4a3b; }}
-      .tip {{ font-size:.84rem; line-height:1.5; color:var(--hypo-muted); margin-top:.7rem; }}
+      .tip {{ font-size:.84rem; line-height:1.5; color:var(--hypo-subtext); margin-top:.7rem; }}
       .hero-result {{ background:var(--hypo-navy); color:white; border-radius:19px; padding:1.55rem 1.8rem; margin-bottom:1.35rem; display:flex; align-items:center; justify-content:space-between; gap:1.3rem; }}
       .hero-result .overline {{ font-size:.85rem; color:#d2e0e2; margin-bottom:.45rem; }}
       .hero-result .recommendation {{ font-family:'Manrope',sans-serif; color:white; font-size:clamp(1.6rem,2.5vw,2.35rem); font-weight:800; line-height:1.1; letter-spacing:-.035em; }}
       .hero-result .explain {{ color:#e0e9e9; margin-top:.55rem; max-width:43rem; }}
       .hero-result .risk-cost-label {{ color:#d2e0e2; font-size:.85rem; text-align:right; }}
       .hero-result .risk-cost {{ color:white; font-family:'Manrope',sans-serif; font-size:clamp(1.5rem,2.5vw,2.15rem); font-weight:800; text-align:right; white-space:nowrap; }}
-      .comparison-card {{ background:#fff; border:1px solid var(--hypo-line); border-radius:17px; padding:1.4rem 1.45rem 1.25rem; }}
+      .comparison-card {{ background:var(--hypo-card); border:1px solid var(--hypo-line); border-radius:17px; padding:1.4rem 1.45rem 1.25rem; }}
       .chart-head {{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; align-items:baseline; margin-bottom:.8rem; }}
-      .chart-note {{ color:var(--hypo-muted); font-size:.8rem; }}
-      .axis-row {{ display:grid; grid-template-columns:minmax(125px, 1fr) minmax(180px, 2.2fr) minmax(100px,.72fr); gap:1rem; align-items:end; margin:.9rem 0 .25rem; color:var(--hypo-muted); font-size:.77rem; }}
+      .chart-note {{ color:var(--hypo-subtext); font-size:.8rem; }}
+      .axis-row {{ display:grid; grid-template-columns:minmax(125px, 1fr) minmax(180px, 2.2fr) minmax(100px,.72fr); gap:1rem; align-items:end; margin:.9rem 0 .25rem; color:var(--hypo-subtext); font-size:.77rem; }}
       .axis-labels {{ display:flex; justify-content:space-between; gap:.35rem; }}
       .cost-row {{ display:grid; grid-template-columns:minmax(125px, 1fr) minmax(180px, 2.2fr) minmax(100px,.72fr); gap:1rem; align-items:center; padding:1.03rem 0; border-top:1px solid #efebe4; }}
       .cost-name {{ font-weight:700; font-size:.93rem; }} .cost-name.recommended::after {{ content:'  RECOMMENDED'; display:inline-block; color:#287354; background:#e5f1e9; font-size:.61rem; padding:.2rem .35rem; border-radius:4px; vertical-align:middle; margin-left:.3rem; letter-spacing:.04em; }}
-      .cost-track {{ height:14px; background:#f0ede7; border-radius:99px; position:relative; overflow:visible; }}
+      .cost-track {{ height:14px; background:var(--hypo-line); border-radius:99px; position:relative; overflow:visible; }}
       .cost-range {{ position:absolute; height:14px; top:0; border-radius:99px; min-width:3px; }}
       .cost-marker {{ position:absolute; top:-4px; width:4px; height:22px; border-radius:5px; background:var(--hypo-orange); transform:translateX(-50%); box-shadow:0 0 0 1px rgba(255,255,255,.2); }}
       .cost-total {{ text-align:right; font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }}
       .rate-pill {{ display:inline-block; padding:.35rem .55rem; border-radius:8px; background:#f1efe9; font-weight:700; color:var(--hypo-ink); font-size:.82rem; }}
-      .footer-note {{ color:var(--hypo-muted); border-top:1px solid var(--hypo-line); padding-top:1rem; margin-top:2rem; font-size:.8rem; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; }}
+      .footer-note {{ color:var(--hypo-subtext); border-top:1px solid var(--hypo-line); padding-top:1rem; margin-top:2rem; font-size:.8rem; display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; }}
       .tiny-tag {{ display:inline-block; color:#66787e; font-size:.74rem; font-weight:800; text-transform:uppercase; letter-spacing:.1em; }}
+      .stApp, .stApp p, .stApp label, .stApp [data-testid="stMarkdownContainer"] {{ color:var(--hypo-text); }}
+      .soft-card, .summary-card, .comparison-card, [data-testid="stVerticalBlockBorderWrapper"] {{ color:var(--hypo-text); }}
+      .summary-row {{ border-bottom-color:var(--hypo-line); }}
+      .cost-row {{ border-top-color:var(--hypo-line); }}
+      .rate-pill {{ background:var(--hypo-line); color:var(--hypo-text); }}
+      .stButton > button[kind="secondary"] {{ background:var(--hypo-card); color:var(--hypo-text); border-color:var(--hypo-line); }}
+      [data-testid="stExpander"] {{ background:var(--hypo-card); border-color:var(--hypo-line); }}
       @media (max-width: 800px) {{
-        .block-container {{ padding-left:1rem; padding-right:1rem; }}
-        .topbar {{ align-items:flex-start; flex-direction:column; gap:.7rem; }} .stepnav {{ gap:.85rem; font-size:.8rem; }}
-        .hero-result {{ align-items:flex-start; flex-direction:column; padding:1.25rem; }} .hero-result .risk-cost-label,.hero-result .risk-cost {{ text-align:left; }}
-        .axis-row, .cost-row {{ grid-template-columns:1fr; gap:.45rem; }} .axis-row > div:first-child, .axis-row > div:last-child {{ display:none; }} .cost-total {{ text-align:left; }}
+        .block-container {{ padding:1rem .8rem 2rem; }}
+        .topbar {{ gap:.6rem; margin-bottom:1rem; }}
+        .brand {{ font-size:1.08rem; white-space:normal; }}
+        .hero-result {{ align-items:flex-start; flex-direction:column; padding:1.1rem; }} .hero-result .risk-cost-label,.hero-result .risk-cost {{ text-align:left; white-space:normal; }}
+        .axis-row, .cost-row {{ grid-template-columns:minmax(0,1fr); gap:.45rem; }} .axis-row > div:first-child, .axis-row > div:last-child {{ display:none; }} .cost-total {{ text-align:left; }}
+        [data-testid="stHorizontalBlock"] {{ flex-wrap:wrap; gap:.75rem; }}
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] {{ min-width:min(100%, 250px); flex:1 1 250px; }}
+        .soft-card, .summary-card, .comparison-card {{ padding:1rem; }}
+      }}
+      @media (max-width: 480px) {{
+        h1 {{ font-size:1.9rem !important; }} h2 {{ font-size:1.25rem !important; }}
+        .block-container {{ padding-left:.65rem; padding-right:.65rem; }}
+        .stButton > button {{ width:100%; }}
+        .metric-value {{ font-size:1.2rem; }}
       }}
     </style>
     """,
@@ -215,16 +245,19 @@ def status_info(traffic_light: str) -> tuple[str, str]:
 
 
 def render_header(active_step: int) -> None:
-    step_items = [(1, "1. Your details"), (2, "2. Calculation"), (3, "3. Results")]
-    nav = "".join(
-        f'<span class="{"active" if n == active_step else ""}">{label}</span>'
-        for n, label in step_items
-    )
-    st.markdown(
-        f'<div class="topbar"><div class="brand"><span class="brand-mark">◈</span>HypoKompass CH</div>'
-        f'<div class="stepnav">{nav}</div></div>',
-        unsafe_allow_html=True,
-    )
+    """Compact brand header with a persistent light/dark theme toggle."""
+    brand_col, toggle_col = st.columns([5, 1.4], vertical_alignment="center")
+    with brand_col:
+        st.markdown(
+            '<div class="brand"><span class="brand-mark">◈</span>HypoKompass CH</div>',
+            unsafe_allow_html=True,
+        )
+    with toggle_col:
+        label = "☀️ Light mode" if st.session_state.get("dark_mode", False) else "🌙 Dark mode"
+        if st.button(label, key="theme_toggle", use_container_width=True):
+            st.session_state["dark_mode"] = not st.session_state.get("dark_mode", False)
+            st.rerun()
+    st.markdown('<hr style="margin:.7rem 0 1.5rem;border-color:var(--hypo-line)">', unsafe_allow_html=True)
 
 
 def render_status(traffic_light: str, title: str, detail: str) -> None:
