@@ -131,7 +131,7 @@ st.markdown(
       hr {{ border-color: var(--hypo-line); }}
       .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:1.2rem; padding:.25rem 0 1.15rem; margin-bottom:1.5rem; border-bottom:1px solid var(--hypo-line); }}
       .brand {{ display:flex; align-items:center; gap:.7rem; font-family:'Manrope',sans-serif; font-size:1.28rem; font-weight:800; letter-spacing:-.035em; color:var(--hypo-text); white-space:nowrap; }}
-      .brand-mark {{ height:2.25rem; width:2.25rem; display:inline-flex; align-items:center; justify-content:center; border:2px solid var(--hypo-navy); border-radius:50%; color:var(--hypo-orange); font-size:1.15rem; background:var(--hypo-card); }}
+      .brand-logo {{ height:1.2em; width:1.2em; object-fit:contain; flex-shrink:0; }}
       .eyebrow {{ font-size:.76rem; letter-spacing:.13em; text-transform:uppercase; font-weight:800; color:#738187; margin:0 0 .45rem; }}
       .intro-copy {{ color:var(--hypo-subtext); font-size:1.08rem; max-width:42rem; margin-top:.6rem; }}
       .section-kicker {{ color:var(--hypo-subtext); font-size:.83rem; text-transform:uppercase; letter-spacing:.1em; font-weight:800; margin-bottom:.35rem; }}
