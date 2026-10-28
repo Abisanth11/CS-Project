@@ -55,10 +55,15 @@ ORANGE = "#e28b43"
 TEAL = "#75a79a"
 BLUE = "#347b96"
 
-# Resolve theme colors before rendering CSS on every Streamlit rerun.
-if "dark_mode" not in st.session_state:
-    st.session_state["dark_mode"] = False
-DARK = st.session_state["dark_mode"]
+# Theme mode: follow the device by default, with a manual three-state toggle.
+# CSS media queries handle system preference because Streamlit's Python runtime
+# cannot directly read the browser's prefers-color-scheme setting.
+if "theme_mode" not in st.session_state:
+    # Migrate the earlier boolean preference if this app is being upgraded in-place.
+    old_preference = st.session_state.pop("dark_mode", None)
+    st.session_state["theme_mode"] = "dark" if old_preference is True else "system"
+THEME_MODE = st.session_state["theme_mode"]
+DARK = THEME_MODE == "dark"
 BG = "#111a1e" if DARK else PAPER
 SURFACE = "#1b292f" if DARK else "#fffdf9"
 CARD = "#202f35" if DARK else "#ffffff"
@@ -79,7 +84,8 @@ st.markdown(
       .stApp, [data-testid="stAppViewContainer"] {{ background: var(--hypo-paper); color:var(--hypo-text); }}
       [data-testid="stHeader"] {{ background: var(--hypo-paper); }}
       [data-testid="stToolbar"] {{ right: 1rem; }}
-      .st-key-theme_toggle button {{ width:2.6rem !important; min-width:2.6rem !important; max-width:2.6rem !important; height:2.6rem !important; min-height:2.6rem !important; padding:0 !important; }}
+      .st-key-theme_toggle {{ position:fixed !important; top:.55rem !important; right:1rem !important; z-index:999999 !important; width:2.8rem !important; }}
+      .st-key-theme_toggle button {{ width:2.6rem !important; min-width:2.6rem !important; max-width:2.6rem !important; height:2.6rem !important; min-height:2.6rem !important; padding:0 !important; box-shadow:0 2px 10px rgba(0,0,0,.12); }}
       .block-container {{ max-width: 1420px; padding-top: 1.2rem; padding-bottom: 3rem; }}
       h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{ font-family: 'Manrope', sans-serif !important; color: var(--hypo-text) !important; letter-spacing: -0.025em; }}
       h1 {{ font-size: clamp(2rem, 3.6vw, 3.15rem) !important; line-height: 1.08 !important; font-weight: 800 !important; }}
@@ -110,7 +116,8 @@ st.markdown(
         border-radius: 12px; min-height: 3.1rem; font-weight: 800; letter-spacing: .01em;
         border: 1px solid var(--hypo-navy); transition: transform .12s ease, box-shadow .12s ease;
       }}
-      .stButton > button[kind="primary"] {{ background: var(--hypo-navy); color: white; }}
+      .stButton > button[kind="primary"] {{ background: var(--hypo-navy); color: #ffffff !important; -webkit-text-fill-color:#ffffff !important; }}
+      .stButton > button[kind="primary"] *, .stButton > button[kind="primary"] p, .stButton > button[kind="primary"] span {{ color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; }}
       .stButton > button[kind="primary"]:hover {{ background: #0a3340; border-color: #0a3340; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,63,75,.15); }}
       .stButton > button[kind="secondary"] {{ background: rgba(255,255,255,.72); color: var(--hypo-navy); }}
       [data-testid="stAlert"] {{ border-radius: 12px; }}
@@ -166,6 +173,21 @@ st.markdown(
       .rate-pill {{ background:var(--hypo-line); color:var(--hypo-text); }}
       .stButton > button[kind="secondary"] {{ background:var(--hypo-card); color:var(--hypo-text); border-color:var(--hypo-line); }}
       [data-testid="stExpander"] {{ background:var(--hypo-card); border-color:var(--hypo-line); }}
+      {"""@media (prefers-color-scheme: dark) {
+        :root {
+          --hypo-navy:#347b88; --hypo-ink:#edf3f4; --hypo-muted:#b4c2c6;
+          --hypo-paper:#111a1e; --hypo-line:#35464d; --hypo-surface:#1b292f;
+          --hypo-card:#202f35; --hypo-text:#edf3f4; --hypo-subtext:#b4c2c6;
+        }
+        .stApp, [data-testid="stAppViewContainer"] { color:#edf3f4; }
+        .metric-value { color:var(--hypo-text) !important; }
+        .summary-row { border-bottom-color:var(--hypo-line); }
+        .cost-row { border-top-color:var(--hypo-line); }
+        .rate-pill { background:var(--hypo-line); color:var(--hypo-text); }
+        .stButton > button[kind="primary"] { background:#347b88; border-color:#347b88; }
+      }""" if THEME_MODE == "system" else ""}
+      [data-testid="stHorizontalBlock"]:has(.st-key-theme_toggle) {{ flex-wrap:nowrap !important; gap:.5rem !important; }}
+      [data-testid="stHorizontalBlock"]:has(.st-key-theme_toggle) > [data-testid="column"] {{ min-width:0 !important; flex:initial !important; }}
       @media (max-width: 800px) {{
         .block-container {{ padding:1rem .8rem 2rem; }}
         .topbar {{ gap:.6rem; margin-bottom:1rem; }}
@@ -256,11 +278,15 @@ def render_header(active_step: int) -> None:
             unsafe_allow_html=True,
         )
     with theme_col:
-        dark_mode = st.session_state.get("dark_mode", False)
-        icon = "☀️" if dark_mode else "🌙"
-        help_text = "Switch to light mode" if dark_mode else "Switch to dark mode"
-        if st.button(icon, key="theme_toggle", help=help_text, type="secondary"):
-            st.session_state["dark_mode"] = not dark_mode
+        mode = st.session_state.get("theme_mode", "system")
+        icons = {"system": "🌓", "light": "🌙", "dark": "☀️"}
+        help_texts = {
+            "system": "Theme: follow device setting (tap to force dark mode)",
+            "dark": "Theme: dark (tap to force light mode)",
+            "light": "Theme: light (tap to follow device setting)",
+        }
+        if st.button(icons.get(mode, "🌓"), key="theme_toggle", help=help_texts.get(mode, "Change theme"), type="secondary"):
+            st.session_state["theme_mode"] = {"system": "dark", "dark": "light", "light": "system"}[mode]
             st.rerun()
     st.markdown('<div class="topbar-divider"></div>', unsafe_allow_html=True)
 
@@ -736,8 +762,9 @@ def scroll_to_top() -> None:
     )
 
 def main() -> None:
-    if "dark_mode" not in st.session_state:
-        st.session_state["dark_mode"] = False
+    if "theme_mode" not in st.session_state:
+        old_preference = st.session_state.pop("dark_mode", None)
+        st.session_state["theme_mode"] = "dark" if old_preference is True else "system"
     st.markdown('<div id="hypo-page-top"></div>', unsafe_allow_html=True)
     if "step" not in st.session_state:
         st.session_state["step"] = 1
