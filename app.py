@@ -17,6 +17,7 @@ from typing import Any
 
 import streamlit as st
 import streamlit.components.v1 as components
+import base64
 from pathlib import Path
 from calculation import calculate
 from evaluation import evaluate
