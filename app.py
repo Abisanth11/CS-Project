@@ -153,23 +153,27 @@ st.markdown(
         .axis-row, .cost-row {{ grid-template-columns:1fr; gap:.45rem; }} .axis-row > div:first-child, .axis-row > div:last-child {{ display:none; }} .cost-total {{ text-align:left; }}
       }}
       {("""
-      /* Dark theme overrides */
-      .stApp {{ background:#111b20; color:#edf3f3; }}
-      [data-testid="stHeader"] {{ background:rgba(17,27,32,.96); }}
-      h1,h2,h3,h4,p,label,[data-testid="stWidgetLabel"],.brand {{ color:#edf3f3 !important; }}
-      .intro-copy,.muted,.tip,.section-kicker,.eyebrow,.metric-label,.metric-small,.chart-note,.footer-note {{ color:#b6c4c8 !important; }}
-      .soft-card,.summary-card,.comparison-card,[data-testid="stVerticalBlockBorderWrapper"] {{ background:#1b292f !important; border-color:#35474e !important; }}
-      [data-testid="stNumberInput"] input,[data-testid="stTextInput"] input,[data-testid="stRadio"] label {{ background:#223239 !important; color:#f3f7f7 !important; border-color:#506168 !important; }}
+      /* Dark theme overrides. Keep all component surfaces and their text in sync. */
+      :root {{ color-scheme: dark; --hypo-ink:#edf3f3; --hypo-muted:#b6c4c8; --hypo-paper:#111b20; --hypo-line:#35474e; }}
+      .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{ background:#111b20 !important; color:#edf3f3 !important; }}
+      [data-testid="stHeader"], [data-testid="stToolbar"] {{ background:rgba(17,27,32,.96) !important; }}
+      h1,h2,h3,h4,p,label,small,li,[data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], .brand {{ color:#edf3f3 !important; }}
+      .intro-copy,.muted,.tip,.section-kicker,.eyebrow,.metric-label,.metric-small,.chart-note,.footer-note,.metric-label,.summary-row .label {{ color:#b6c4c8 !important; }}
+      .soft-card,.summary-card,.comparison-card,.rate-pill,[data-testid="stVerticalBlockBorderWrapper"], [data-testid="stExpander"], [data-testid="stForm"] {{ background:#1b292f !important; color:#edf3f3 !important; border-color:#35474e !important; }}
+      [data-testid="stNumberInput"] input,[data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] [data-baseweb="select"], [data-testid="stRadio"] label {{ background:#223239 !important; color:#f3f7f7 !important; border-color:#506168 !important; }}
+      [data-testid="stRadio"] label p, [data-testid="stCheckbox"] label p {{ color:#f3f7f7 !important; }}
       [data-testid="stRadio"] label:has(input:checked) {{ border-color:#83b7ad !important; background:#263b40 !important; }}
-      [data-testid="stExpander"] {{ background:#1b292f !important; border-color:#35474e !important; }}
+      [data-testid="stExpander"] summary, [data-testid="stExpander"] summary p {{ color:#edf3f3 !important; }}
       .summary-row {{ border-color:#35474e !important; }}
-      .summary-row .label,.metric-label,.chart-note {{ color:#b6c4c8 !important; }}
-      .summary-row .value,.metric-value,.cost-name,.cost-total {{ color:#edf3f3 !important; }}
+      .summary-row .value,.metric-value,.cost-name,.cost-total,.rate-pill {{ color:#edf3f3 !important; }}
       .cost-track {{ background:#35434a !important; }}
-      .rate-pill {{ background:#35434a !important; color:#edf3f3 !important; }}
-      .topbar {{ border-color:#35474e !important; }}
+      .cost-row,.axis-row {{ border-color:#35474e !important; }}
+      .topbar,.topbar-divider {{ border-color:#35474e !important; }}
       hr {{ border-color:#35474e !important; }}
       .stButton > button[kind="secondary"] {{ background:#26383f !important; color:#edf3f3 !important; border-color:#506168 !important; }}
+      .stButton > button[kind="secondary"] *, .stButton > button[kind="secondary"] p {{ color:#edf3f3 !important; }}
+      .stButton > button[kind="primary"] {{ background:#75a79a !important; color:#10252a !important; border-color:#75a79a !important; }}
+      .stButton > button[kind="primary"] *, .stButton > button[kind="primary"] p {{ color:#10252a !important; }}
       """ if st.session_state.get("dark_mode", False) else "")}
     </style>
     """,
@@ -691,15 +695,49 @@ def render_footer(market: dict[str, Any]) -> None:
 
 
 def scroll_to_top() -> None:
-    """Scroll the Streamlit page to the top after navigation or recalculation."""
+    """Scroll the actual Streamlit scroll container to the top after rerendering.
+
+    Streamlit's scroll container differs across versions. Retry briefly because this
+    component can mount before the new page content has finished rendering.
+    """
     components.html(
         """<script>
-        const doc = window.parent.document;
-        const main = doc.querySelector('section.main');
-        if (main) { main.scrollTo({top: 0, left: 0, behavior: 'instant'}); }
-        window.parent.scrollTo({top: 0, left: 0, behavior: 'instant'});
+        (() => {
+          let attempts = 0;
+          const scrollTop = () => {
+            try {
+              const doc = window.parent.document;
+              const selectors = [
+                '[data-testid="stMain"]',
+                '[data-testid="stAppViewContainer"]',
+                'section.main',
+                'div.main'
+              ];
+              selectors.forEach((selector) => {
+                const el = doc.querySelector(selector);
+                if (el) {
+                  el.scrollTop = 0;
+                  if (typeof el.scrollTo === 'function') el.scrollTo({top: 0, left: 0, behavior: 'auto'});
+                }
+              });
+              doc.documentElement.scrollTop = 0;
+              doc.body.scrollTop = 0;
+              window.parent.scrollTo(0, 0);
+              const main = doc.querySelector('[data-testid="stMain"]');
+              if (main && main.scrollTop === 0) return true;
+            } catch (e) { /* parent access may not be available in some deployments */ }
+            return false;
+          };
+          const retry = () => {
+            scrollTop();
+            attempts += 1;
+            if (attempts < 12) window.setTimeout(retry, 100);
+          };
+          retry();
+        })();
         </script>""",
-        height=0,
+        height=1,
+        scrolling=False,
     )
 
 
