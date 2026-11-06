@@ -569,6 +569,57 @@ def render_cost_chart(metrics: dict[str, Any], recommendation: str) -> None:
     st.caption("The range shows modeled costs from falling to rising interest rates. It is not a forecast of actual rate movements.")
 
 
+def render_scenario_chart(details: list[dict[str, Any]], recommendation: str, horizon: int) -> None:
+    """Cost chart from the 1,000+ historical/simulated scenarios (same numbers the recommendation uses).
+
+    Bar = average costs up to the average of the worst 10 % of scenarios; marker = average.
+    """
+    colors = {
+        "Staggered fixed 3/10/15 years": NAVY,
+        "All fixed for 10 years": BLUE,
+        "50% fixed for 10 years / 50% SARON": TEAL,
+        "All SARON": "#b9652c",
+    }
+    ordered = sorted(details, key=lambda item: (item["name"] != recommendation, item["mean"]))
+    all_costs = [item[key] for item in ordered for key in ("mean", "cvar")]
+    low_axis = max(0, int((min(all_costs) // 50_000) * 50_000) - 50_000)
+    high_axis = int(((max(all_costs) + 49_999) // 50_000) * 50_000) + 50_000
+    span = max(1, high_axis - low_axis)
+    ticks = list(range(low_axis, high_axis + 1, max(50_000, int(((span / 4) // 50_000) * 50_000) or 50_000)))
+    if ticks[-1] != high_axis:
+        ticks.append(high_axis)
+    axis_html = " ".join(f"<span>{int(t / 1000)}</span>" for t in ticks)
+    with st.container(border=True):
+        st.markdown(
+            f'<div class="chart-head"><h3 style="margin:0">Interest costs over {horizon} years</h3><span class="chart-note">in CHF 1\'000 · bar = average to worst 10% · marker = average</span></div>'
+            f'<div class="axis-row"><div></div><div class="axis-labels">{axis_html}</div><div style="text-align:right">Average</div></div>',
+            unsafe_allow_html=True,
+        )
+        for item in ordered:
+            left = max(0.0, min(100.0, (item["mean"] - low_axis) / span * 100))
+            right = max(0.0, min(100.0, (item["cvar"] - low_axis) / span * 100))
+            width = max(.7, right - left)
+            is_recommended = item["name"] == recommendation
+            st.markdown(
+                f'<div class="cost-row"><div class="cost-name {"recommended" if is_recommended else ""}">{html.escape(strategy_label(item["name"]))}</div>'
+                f'<div class="cost-track"><div class="cost-range" style="left:{left:.2f}%;width:{width:.2f}%;background:{colors.get(item["name"], "#7c7e9b")}"></div>'
+                f'<div class="cost-marker" style="left:{left:.2f}%"></div></div>'
+                f'<div class="cost-total">{html.escape(money(item["mean"]))}</div></div>',
+                unsafe_allow_html=True,
+            )
+    st.caption("Based on 1,000+ historical (since 1977) and simulated interest-rate paths over your horizon. "
+               "A long bar means the costs can rise a lot in bad scenarios. It is not a forecast of actual rate movements.")
+
+
+def short_rules(rules: list[str]) -> list[str]:
+    """Keeps only the last rule per feature, e.g. 'horizon > 6' and 'horizon > 12.5' -> 'horizon > 12.5'."""
+    last = {}
+    for rule in rules:
+        feature = rule.split(" <=")[0].split(" >")[0].split(" is ")[0]
+        last[feature] = rule
+    return list(last.values())
+
+
 def render_results_page() -> None:
     data = st.session_state.get("result_data")
     results = st.session_state.get("result_results")
@@ -582,9 +633,12 @@ def render_results_page() -> None:
     affordability = results["affordability"]
     metrics = assessment["metrics"]
     ml = assessment.get("ml")
-    # The decision tree decides; the old rule of evaluation.py is only the fallback
-    recommendation = ml["strategy"] if ml else assessment["recommended_strategy"]
+    # The full simulation over all scenarios decides; the decision tree explains it.
+    # The old rule of evaluation.py (-0.25 / 0 / +0.25) is only the fallback without ML.
+    recommendation = ml["exact_strategy"] if ml else assessment["recommended_strategy"]
     rec_metric = metrics[recommendation]
+    horizon = user.get("horizon_years", DEFAULT_HORIZON_YEARS)
+    rec_ml = next((item for item in ml["details"] if item["name"] == recommendation), None) if ml else None
     market = data["market"]
 
     render_header(3)
@@ -594,8 +648,11 @@ def render_results_page() -> None:
     st.write("")
 
     if ml:
-        # Explanation from the tree: the rules on the way to this user's leaf
-        rationale = "Because " + " and ".join(ml["rules"]) + "." if ml["rules"] else "This strategy fits all profiles in our model."
+        if ml["strategy"] == recommendation and ml["rules"]:
+            # Explanation from the tree: the rules on the way to this user's leaf
+            rationale = "Because " + " and ".join(short_rules(ml["rules"])) + "."
+        else:
+            rationale = "Lowest risk-weighted interest costs for your exact profile across 1,000+ rate scenarios."
     else:
         rationale = {
             "low": "You prefer predictable interest costs, so the recommendation prioritizes minimizing fluctuations.",
@@ -606,8 +663,8 @@ def render_results_page() -> None:
         f'<div class="hero-result"><div><div class="overline">Recommended for your profile · {risk_label(user["risk_tolerance"])}</div>'
         f'<div class="recommendation">{html.escape(strategy_label(recommendation))}</div>'
         f'<div class="explain">{html.escape(rationale)}</div></div>'
-        f'<div><div class="risk-cost-label">Interest costs with stable rates</div>'
-        f'<div class="risk-cost">{html.escape(money(rec_metric["stable"]))}</div></div></div>',
+        f'<div><div class="risk-cost-label">{"Average interest costs over " + str(horizon) + " years" if rec_ml else "Interest costs with stable rates"}</div>'
+        f'<div class="risk-cost">{html.escape(money(rec_ml["mean"] if rec_ml else rec_metric["stable"]))}</div></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -639,7 +696,10 @@ def render_results_page() -> None:
             )
 
     with right:
-        render_cost_chart(metrics, recommendation)
+        if ml:
+            render_scenario_chart(ml["details"], recommendation, horizon)
+        else:
+            render_cost_chart(metrics, recommendation)
         st.write("")
         if ml:
             render_ml_card(ml, recommendation, user)
@@ -648,15 +708,27 @@ def render_results_page() -> None:
             st.markdown('<div class="section-kicker">Interest-rate scenarios</div>', unsafe_allow_html=True)
             st.markdown("### What could change?")
             scenario_col1, scenario_col2, scenario_col3 = st.columns(3, gap="small")
-            with scenario_col1:
-                st.markdown(f'<div class="metric-label">Rates fall</div><div class="metric-value">{html.escape(money(rec_metric["falling"]))}</div><div class="metric-small">−0.25 percentage points/year</div>', unsafe_allow_html=True)
-            with scenario_col2:
-                st.markdown(f'<div class="metric-label">Rates stay stable</div><div class="metric-value">{html.escape(money(rec_metric["stable"]))}</div><div class="metric-small">±0.00 percentage points/year</div>', unsafe_allow_html=True)
-            with scenario_col3:
-                st.markdown(f'<div class="metric-label">Rates rise</div><div class="metric-value">{html.escape(money(rec_metric["rising"]))}</div><div class="metric-small">+0.25 percentage points/year</div>', unsafe_allow_html=True)
+            if rec_ml:
+                with scenario_col1:
+                    st.markdown(f'<div class="metric-label">On average</div><div class="metric-value">{html.escape(money(rec_ml["mean"]))}</div><div class="metric-small">across all scenarios</div>', unsafe_allow_html=True)
+                with scenario_col2:
+                    st.markdown(f'<div class="metric-label">In bad scenarios</div><div class="metric-value">{html.escape(money(rec_ml["cvar"]))}</div><div class="metric-small">average of the worst 10%</div>', unsafe_allow_html=True)
+                with scenario_col3:
+                    st.markdown(f'<div class="metric-label">Budget stress</div><div class="metric-value">{rec_ml["stress"]:.0%}</div><div class="metric-small">of scenarios above 1/3 of income</div>', unsafe_allow_html=True)
+            else:   # fallback without ML: the simple trend scenarios of calculation.py
+                with scenario_col1:
+                    st.markdown(f'<div class="metric-label">Rates fall</div><div class="metric-value">{html.escape(money(rec_metric["falling"]))}</div><div class="metric-small">−0.25 percentage points/year</div>', unsafe_allow_html=True)
+                with scenario_col2:
+                    st.markdown(f'<div class="metric-label">Rates stay stable</div><div class="metric-value">{html.escape(money(rec_metric["stable"]))}</div><div class="metric-small">±0.00 percentage points/year</div>', unsafe_allow_html=True)
+                with scenario_col3:
+                    st.markdown(f'<div class="metric-label">Rates rise</div><div class="metric-value">{html.escape(money(rec_metric["rising"]))}</div><div class="metric-small">+0.25 percentage points/year</div>', unsafe_allow_html=True)
 
     if assessment.get("rent_comparison"):
-        rent = assessment["rent_comparison"]
+        rent = dict(assessment["rent_comparison"])
+        if rec_ml:
+            # same numbers as above: average interest over the horizon + maintenance
+            rent["ownership_cost"] = rec_ml["mean"] / (horizon * 12) + rent["monthly_maintenance"]
+            rent["difference"] = rent["rent"] - rent["ownership_cost"]
         st.write("")
         with st.container(border=True):
             st.markdown('<div class="section-kicker">Optional comparison</div>', unsafe_allow_html=True)
@@ -680,7 +752,7 @@ def render_results_page() -> None:
         for col, (label, key) in zip(rate_cols, rate_display):
             with col:
                 st.markdown(f'<div class="metric-label">{label}</div><div class="metric-value">{market["rates"][key]:.2f}%</div>', unsafe_allow_html=True)
-        st.markdown("**Assumptions:** 15-year period; interest-rate scenarios of −0.25 / 0 / +0.25 percentage points per year; modeled SARON rate does not fall below 0%; one-time purchase costs estimated at 3%; affordability assessed using a 5% imputed interest rate plus 1% maintenance. Interest costs exclude principal repayments.")
+        st.markdown(("**Assumptions:** " + (f"{horizon}-year horizon; 1,000+ historical (since 1977) and simulated interest-rate paths; early repayment penalty if you sell before a fixed term ends; " if ml else "15-year period; interest-rate scenarios of −0.25 / 0 / +0.25 percentage points per year; ")) + "modeled SARON rate does not fall below 0%; one-time purchase costs estimated at 3%; affordability assessed using a 5% imputed interest rate plus 1% maintenance. Interest costs exclude principal repayments.")
 
     st.write("")
     button_col, second_col = st.columns([1, 1], gap="medium")
@@ -706,7 +778,7 @@ def render_ml_card(ml: dict[str, Any], recommendation: str, user: dict[str, Any]
         st.markdown('<div class="section-kicker">Decision tree · 1,000+ rate scenarios</div>', unsafe_allow_html=True)
         st.markdown("### Why this strategy?")
         # 1. The rules of the tree as a list
-        for rule in ml["rules"]:
+        for rule in short_rules(ml["rules"]):
             st.markdown(f"- {html.escape(rule[0].upper() + rule[1:])}")
         # 2. Key figures of every strategy over the user's horizon
         horizon = user.get("horizon_years", DEFAULT_HORIZON_YEARS)
@@ -734,9 +806,9 @@ def render_ml_card(ml: dict[str, Any], recommendation: str, user: dict[str, Any]
         )
         # 3. Honest note if the small tree and the exact simulation disagree for this user
         if ml["exact_strategy"] != ml["strategy"]:
-            st.info(f"For your exact profile, the full simulation would slightly prefer "
-                    f"**{strategy_label(ml['exact_strategy'])}**. The tree keeps its rules simple, "
-                    f"so it can differ in borderline cases.")
+            st.info(f"The rules above are the decision tree's rule of thumb for similar profiles, which points to "
+                    f"**{strategy_label(ml['strategy'])}**. For your exact profile the full simulation prefers "
+                    f"**{strategy_label(ml['exact_strategy'])}**, so that is our recommendation.")
 
 
 def render_footer(market: dict[str, Any]) -> None:
