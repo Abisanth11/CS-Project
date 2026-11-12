@@ -492,7 +492,7 @@ def render_input_page(market: dict[str, Any]) -> None:
             st.markdown('<div class="tip">Purchase costs are estimated at a flat 3%. Pension-fund assets cannot be used to cover these costs.</div>', unsafe_allow_html=True)
 
         st.write("")
-        st.markdown('<div class="soft-card"><div class="section-kicker">What we compare</div><h3>4 mortgage strategies</h3><p class="muted">Fixed for 10 years, staggered 3 / 10 / 15, a fixed/SARON mix, and all SARON.</p><div class="tip">Interest costs are compared over 15 years under falling, stable and rising rate scenarios. A decision tree trained on 1,000+ historical and simulated rate paths picks the strategy that fits your plans and risk tolerance.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="soft-card"><div class="section-kicker">What we compare</div><h3>4 mortgage strategies</h3><p class="muted">Fixed for 10 years, staggered 3 / 10 / 15, a fixed/SARON mix, and all SARON.</p><div class="tip">Interest costs are compared over your planning horizon across 1,000+ historical (since 1977) and simulated interest-rate paths. The full simulation picks the strategy that fits your plans and risk tolerance, and a decision tree explains which factors drive that choice.</div></div>', unsafe_allow_html=True)
         if market["source"].startswith("Placeholder"):
             st.markdown('<div class="tip">Market data: placeholder values are being used because an SNB database is not currently available.</div>', unsafe_allow_html=True)
         else:
